@@ -4,28 +4,24 @@ ARG RUNTIME_IMAGE=ubuntu:noble
 
 # Builder image
 FROM ${BUILDER_IMAGE} AS builder
-RUN apt-get update && apt-get install -y \
-    libcurl4-openssl-dev \
-    libxml2-dev \
- && rm -r /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libcurl4-openssl-dev libxml2-dev
+RUN rm -r /var/lib/apt/lists/*
 WORKDIR /workdir/
 COPY Plugins Plugins/
 COPY Source Source/
 COPY Tests Tests/
 COPY Package.* ./
 
-RUN swift package update
+RUN echo `swift build $SWIFT_FLAGS --show-bin-path`
 ARG SWIFT_FLAGS="-c release -Xswiftc -static-stdlib -Xlinker -l_CFURLSessionInterface -Xlinker -l_CFXMLInterface -Xlinker -lcurl -Xlinker -lxml2 -Xswiftc -I. -Xlinker -fuse-ld=lld -Xlinker -L/usr/lib/swift/linux"
 RUN swift build $SWIFT_FLAGS --product swiftlint
-RUN mv `swift build $SWIFT_FLAGS --show-bin-path`/swiftlint /usr/bin
+RUN mv `swift build $SWIFT_FLAGS --show-bin-path`/swiftlint /workdir
 
 # Runtime image
 FROM ${RUNTIME_IMAGE}
 LABEL org.opencontainers.image.source=https://github.com/realm/SwiftLint
-RUN apt-get update && apt-get install -y \
-    libcurl4 \
-    libxml2 \
- && rm -r /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libcurl4 libxml2
+RUN rm -r /var/lib/apt/lists/*
 COPY --from=builder /usr/lib/libsourcekitdInProc.so /usr/lib
 COPY --from=builder /usr/lib/swift/host/libSwiftBasicFormat.so /usr/lib
 COPY --from=builder /usr/lib/swift/host/libSwiftCompilerPluginMessageHandling.so /usr/lib
@@ -55,7 +51,7 @@ COPY --from=builder /usr/lib/swift/linux/libswiftDispatch.so /usr/lib
 COPY --from=builder /usr/lib/swift/linux/libswiftGlibc.so /usr/lib
 COPY --from=builder /usr/lib/swift/linux/libswiftSynchronization.so /usr/lib
 COPY --from=builder /usr/lib/swift/linux/libswiftSwiftOnoneSupport.so /usr/lib
-COPY --from=builder /usr/bin/swiftlint /usr/bin
+COPY --from=builder /workdir/swiftlint /usr/bin
 
 RUN swiftlint version
 RUN echo "_ = 0" | swiftlint --use-stdin
